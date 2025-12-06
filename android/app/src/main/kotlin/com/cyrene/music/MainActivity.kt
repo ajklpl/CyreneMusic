@@ -1,10 +1,18 @@
 package com.cyrene.music
 
+import android.os.Bundle
 import android.util.Log
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.ryanheise.audioservice.AudioServiceActivity
 import io.flutter.embedding.engine.FlutterEngine
 
 class MainActivity : AudioServiceActivity() {
+    
+    override fun onCreate(savedInstanceState: Bundle?) {
+        // 必须在 super.onCreate() 之前调用 installSplashScreen()
+        installSplashScreen()
+        super.onCreate(savedInstanceState)
+    }
     
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)

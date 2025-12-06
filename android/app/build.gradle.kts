@@ -85,4 +85,7 @@ dependencies {
 
     // 媒体兼容库：提供 MediaBrowserCompat / MediaControllerCompat / MediaStyle 等
     implementation("androidx.media:media:1.7.0")
+    
+    // Android 12+ Splash Screen API 向后兼容库
+    implementation("androidx.core:core-splashscreen:1.0.1")
 }
