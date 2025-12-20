@@ -69,27 +69,27 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
       fluent_ui.PaneItem(
         icon: _svgIcon('assets/ui/FluentColorHome16.svg'),
         title: const Text('首页'),
-        body: const HomePage(),
+        body: _buildAnimatedContent(),
       ),
       fluent_ui.PaneItem(
         icon: _svgIcon('assets/ui/FluentColorSearchSparkle16.svg'),
         title: const Text('发现'),
-        body: const DiscoverPage(),
+        body: _buildAnimatedContent(),
       ),
       fluent_ui.PaneItem(
         icon: _svgIcon('assets/ui/FluentColorHistory16.svg'),
         title: const Text('历史'),
-        body: const HistoryPage(),
+        body: _buildAnimatedContent(),
       ),
       fluent_ui.PaneItem(
         icon: _svgIcon('assets/ui/FluentColorDocumentFolder16.svg'),
         title: const Text('本地'),
-        body: const LocalPage(),
+        body: _buildAnimatedContent(),
       ),
       fluent_ui.PaneItem(
         icon: _svgIcon('assets/ui/FluentColorPerson16.svg'),
         title: const Text('我的'),
-        body: const MyPage(),
+        body: _buildAnimatedContent(),
       ),
     ];
 
@@ -99,7 +99,7 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
         fluent_ui.PaneItem(
           icon: _svgIcon('assets/ui/FluentColorCode16.svg'),
           title: const Text('Dev'),
-          body: const DeveloperPage(),
+          body: _buildAnimatedContent(),
         ),
       );
     }
@@ -109,7 +109,7 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
       fluent_ui.PaneItem(
         icon: _svgIcon('assets/ui/FluentColorHeart16.svg'),
         title: const Text('支持'),
-        body: const SupportPage(),
+        body: _buildAnimatedContent(),
       ),
     );
 
@@ -122,9 +122,34 @@ class _FluentMainLayoutState extends State<FluentMainLayout> with WindowListener
       fluent_ui.PaneItem(
         icon: _svgIcon('assets/ui/FluentColorSettings16.svg'),
         title: const Text('设置'),
-        body: const _DeferredSettingsPage(),
+        body: _buildAnimatedContent(),
       ),
     ];
+  }
+
+  /// 构建带动画的内容区域（所有页面共享同一个 AnimatedSwitcher）
+  Widget _buildAnimatedContent() {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 250),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (child, animation) {
+        return FadeTransition(
+          opacity: animation,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0.015, 0),
+              end: Offset.zero,
+            ).animate(animation),
+            child: child,
+          ),
+        );
+      },
+      child: KeyedSubtree(
+        key: ValueKey<int>(_navigationProvider.currentIndex),
+        child: _bodyChildren[_navigationProvider.currentIndex],
+      ),
+    );
   }
 
   /// 与 Pane 对应顺序的内容页（items + footerItems）
