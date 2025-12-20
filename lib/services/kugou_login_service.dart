@@ -160,19 +160,38 @@ class KugouLoginService extends ChangeNotifier {
       '${UrlService().kugouQrCheckUrl}?qrcode=$qrcode${userId != null ? '&userId=$userId' : ''}&timestamp=$ts'
     );
 
+    if (kDebugMode) {
+      print('[KugouLoginService] checkQrStatus 请求: $primary');
+    }
+
     Future<Map<String, dynamic>> doGet(Uri u) async {
       final r = await http.get(u).timeout(const Duration(seconds: 10));
-      if (r.statusCode != 200) {
-        throw Exception('HTTP ${r.statusCode}');
+      final data = json.decode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+
+      if (kDebugMode) {
+        print('[KugouLoginService] checkQrStatus 响应: statusCode=${r.statusCode}, data=$data');
       }
-      return json.decode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+
+      // 即使 HTTP 状态码不是 200，也尝试解析响应
+      if (r.statusCode != 200) {
+        // 如果响应中有 status 字段，使用它；否则抛出异常
+        if (data['status'] != null) {
+          return data;
+        }
+        throw Exception('HTTP ${r.statusCode}: ${data['message'] ?? '未知错误'}');
+      }
+      return data;
     }
 
     Map<String, dynamic> data = await doGet(primary);
 
     final statusVal = data['status'] as int?;
     if (statusVal == null) {
-      throw Exception('无效响应');
+      throw Exception('无效响应: ${data['message'] ?? '缺少 status 字段'}');
+    }
+
+    if (kDebugMode) {
+      print('[KugouLoginService] checkQrStatus 解析结果: status=$statusVal');
     }
 
     return KugouQrCheckResult(

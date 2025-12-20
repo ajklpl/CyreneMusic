@@ -363,7 +363,7 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
         final bound = (netease != null) && (netease['bound'] == true);
         final nickname = netease?['nickname'] as String?;
         final avatarUrl = netease?['avatarUrl'] as String?;
-        final neteaseUserId = netease?['userId'] as String?;
+        final neteaseUserId = netease?['userId']?.toString();
 
         return Padding(
           padding: const EdgeInsets.all(12),
@@ -482,7 +482,7 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
         final bound = (kugou != null) && (kugou['bound'] == true);
         final username = kugou?['username'] as String?;
         final avatar = kugou?['avatar'] as String?;
-        final kugouUserId = kugou?['userId'] as String?;
+        final kugouUserId = kugou?['userId']?.toString();
 
         return Padding(
           padding: const EdgeInsets.all(12),
@@ -660,7 +660,7 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
           final bound = (netease != null) && (netease['bound'] == true);
           final nickname = netease?['nickname'] as String?;
           final avatarUrl = netease?['avatarUrl'] as String?;
-          final neteaseUserId = netease?['userId'] as String?;
+          final neteaseUserId = netease?['userId']?.toString();
 
           return ListTile(
             leading: CircleAvatar(
@@ -728,7 +728,7 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
           final bound = (kugou != null) && (kugou['bound'] == true);
           final username = kugou?['username'] as String?;
           final avatar = kugou?['avatar'] as String?;
-          final kugouUserId = kugou?['userId'] as String?;
+          final kugouUserId = kugou?['userId']?.toString();
 
           return ListTile(
             leading: CircleAvatar(
@@ -793,7 +793,7 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
           final bound = (netease != null) && (netease['bound'] == true);
           final nickname = netease?['nickname'] as String?;
           final avatarUrl = netease?['avatarUrl'] as String?;
-          final neteaseUserId = netease?['userId'] as String?;
+          final neteaseUserId = netease?['userId']?.toString();
 
           return fluent_ui.ListTile(
             leading: avatarUrl != null
@@ -846,7 +846,7 @@ class _ThirdPartyAccountsContentState extends State<ThirdPartyAccountsContent> {
           final bound = (kugou != null) && (kugou['bound'] == true);
           final username = kugou?['username'] as String?;
           final avatar = kugou?['avatar'] as String?;
-          final kugouUserId = kugou?['userId'] as String?;
+          final kugouUserId = kugou?['userId']?.toString();
 
           return fluent_ui.ListTile(
             leading: avatar != null
