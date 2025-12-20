@@ -87,6 +87,7 @@ class _KugouQrDialogState extends State<KugouQrDialog> {
           qrcode: widget.qrcode,
           userId: widget.userId,
         );
+        print('[KugouQrDialog] 收到状态: ${r.status}, message: ${r.message}');
         String nextStatus = _statusText;
         bool success = false;
         switch (r.status) {
@@ -100,6 +101,7 @@ class _KugouQrDialogState extends State<KugouQrDialog> {
             nextStatus = '待确认，请在手机上确认登录';
             break;
           case 4:
+            print('[KugouQrDialog] 登录成功，准备关闭对话框');
             success = true;
             _completed = true;
             break;
@@ -108,13 +110,20 @@ class _KugouQrDialogState extends State<KugouQrDialog> {
         }
         if (!mounted) return;
         if (success) {
+          print('[KugouQrDialog] 关闭对话框');
           Navigator.of(context).pop(true);
         } else if (nextStatus != _statusText) {
           setState(() {
             _statusText = nextStatus;
           });
         }
-      } catch (_) {}
+      } catch (e) {
+        print('[KugouQrDialog] 异常: $e');
+        if (!mounted) return;
+        setState(() {
+          _statusText = '检查状态失败: ${e.toString()}';
+        });
+      }
     });
   }
 
