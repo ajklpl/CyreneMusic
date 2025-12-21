@@ -4,6 +4,7 @@ import '../models/lyric_line.dart';
 class LyricParser {
   /// 解析网易云音乐 YRC 格式逐字歌词
   /// YRC格式示例: [22310,4300](22310,2880,0)都 (25190,310,0)是(25500,290,0)勇
+  /// 注意：字级持续时间单位是百分之一秒（需要×10转换为毫秒）
   static List<LyricLine> parseNeteaseYrcLyric(String yrcLyric, {String? translation}) {
     if (yrcLyric.isEmpty) return [];
 
@@ -34,14 +35,22 @@ class LyricParser {
       if (line.trim().isEmpty) continue;
 
       try {
+        // 跳过元数据行（JSON格式）
+        if (line.startsWith('[{')) {
+          continue;
+        }
+
         // YRC格式: [startTime,duration](word1Time,word1Duration,0)word1 (word2Time,word2Duration,0)word2
         final lineTimeMatch = RegExp(r'^\[(\d+),(\d+)\]').firstMatch(line);
         if (lineTimeMatch == null) continue;
 
         final lineStartMs = int.parse(lineTimeMatch.group(1)!);
+        final lineDurationMs = int.parse(lineTimeMatch.group(2)!);
         final lineStartTime = Duration(milliseconds: lineStartMs);
+        final lineDuration = Duration(milliseconds: lineDurationMs);
 
-        // 提取歌词文本（忽略逐字时间戳）
+        // 提取逐字歌词
+        final words = <LyricWord>[];
         final textBuffer = StringBuffer();
 
         // 匹配所有 (time,duration,0)word 格式
@@ -49,8 +58,17 @@ class LyricParser {
         final wordMatches = wordPattern.allMatches(line);
 
         for (final match in wordMatches) {
-          final wordText = match.group(3)!.trim();
+          final wordStartMs = int.parse(match.group(1)!);
+          final wordDurationMs = int.parse(match.group(2)!); // 持续时间，单位毫秒
+          final wordText = match.group(3)!; // 保留空格，不使用 trim()
+
           if (wordText.isNotEmpty) {
+            // YRC 格式中，word startTime 和 duration 都是毫秒
+            words.add(LyricWord(
+              startTime: Duration(milliseconds: wordStartMs),
+              duration: Duration(milliseconds: wordDurationMs),
+              text: wordText,
+            ));
             textBuffer.write(wordText);
           }
         }
@@ -61,6 +79,8 @@ class LyricParser {
             startTime: lineStartTime,
             text: fullText,
             translation: translationMap[lineStartTime],
+            words: words.isNotEmpty ? words : null,
+            lineDuration: lineDuration,
           ));
         }
       } catch (e) {
@@ -73,14 +93,25 @@ class LyricParser {
     // 按时间排序
     lines.sort((a, b) => a.startTime.compareTo(b.startTime));
 
+    // 调试日志：确认解析了多少行逐字歌词
+    final wordsCount = lines.where((l) => l.hasWordByWord).length;
+    print('[YRC解析] 总行数: ${lines.length}, 包含逐字数据: $wordsCount行');
+    
     return lines;
   }
 
   /// 解析网易云音乐 LRC 格式歌词
-  static List<LyricLine> parseNeteaseLyric(String lyric, {String? translation, String? yrcLyric}) {
+  /// [translation] - 普通翻译歌词 (tlyric)
+  /// [yrcLyric] - YRC 逐字歌词
+  /// [yrcTranslation] - YRC 对应的翻译歌词 (ytlrc)，时间戳与 YRC 匹配
+  static List<LyricLine> parseNeteaseLyric(String lyric, {String? translation, String? yrcLyric, String? yrcTranslation}) {
     // 如果有YRC逐字歌词，优先使用
     if (yrcLyric != null && yrcLyric.isNotEmpty) {
-      final yrcLines = parseNeteaseYrcLyric(yrcLyric, translation: translation);
+      // 优先使用 ytlrc（时间戳与 YRC 匹配），否则回退到 tlyric
+      final effectiveTranslation = (yrcTranslation != null && yrcTranslation.isNotEmpty) 
+          ? yrcTranslation 
+          : translation;
+      final yrcLines = parseNeteaseYrcLyric(yrcLyric, translation: effectiveTranslation);
       if (yrcLines.isNotEmpty) {
         return yrcLines;
       }

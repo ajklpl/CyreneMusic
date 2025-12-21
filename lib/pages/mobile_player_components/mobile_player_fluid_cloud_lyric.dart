@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import '../../services/player_service.dart';
 import '../../services/lyric_font_service.dart';
 import '../../models/lyric_line.dart';
@@ -359,45 +360,55 @@ class _MobilePlayerFluidCloudLyricState extends State<MobilePlayerFluidCloudLyri
     double itemHeight, 
     bool isActuallyPlaying
   ) {
-    return AnimatedBuilder(
-      animation: _fluidAnimation,
-      builder: (context, child) {
-        final isSelected = _isManualMode && !isActuallyPlaying; 
-        
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              _buildFluidCloudText(
-                text: lyric.text,
-                fontSize: 22, // 移动端字体略小
-                isSelected: isSelected,
-                isPlaying: isActuallyPlaying,
-              ),
-              
-              if (widget.showTranslation && 
-                  lyric.translation != null && 
-                  lyric.translation!.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(
-                    lyric.translation!,
-                    textAlign: TextAlign.center,
-                    maxLines: 1, // 限制为1行防止溢出
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.7),
-                      fontSize: 13,
-                      fontFamily: LyricFontService().currentFontFamily ?? 'Microsoft YaHei',
-                    ),
-                  ),
+    final isSelected = _isManualMode && !isActuallyPlaying; 
+    
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // 如果是正在播放且有逐字歌词，使用精确填充动画
+          if (isActuallyPlaying && lyric.hasWordByWord)
+            _MobileKaraokeText(
+              lyric: lyric,
+              lyrics: widget.lyrics,
+              index: widget.currentLyricIndex,
+              isSelected: isSelected,
+            )
+          else
+            // 否则使用简单的流体动画
+            AnimatedBuilder(
+              animation: _fluidAnimation,
+              builder: (context, child) {
+                return _buildFluidCloudText(
+                  text: lyric.text,
+                  fontSize: 22,
+                  isSelected: isSelected,
+                  isPlaying: isActuallyPlaying,
+                );
+              },
+            ),
+          
+          if (widget.showTranslation && 
+              lyric.translation != null && 
+              lyric.translation!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                lyric.translation!,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.7),
+                  fontSize: 13,
+                  fontFamily: LyricFontService().currentFontFamily ?? 'Microsoft YaHei',
                 ),
-            ],
-          ),
-        );
-      },
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -575,6 +586,155 @@ class _MobilePlayerFluidCloudLyricState extends State<MobilePlayerFluidCloudLyri
     final minutes = duration.inMinutes;
     final seconds = duration.inSeconds % 60;
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+}
+
+/// 移动端卡拉OK文本组件 - 实现逐字填充效果
+class _MobileKaraokeText extends StatefulWidget {
+  final LyricLine lyric;
+  final List<LyricLine> lyrics;
+  final int index;
+  final bool isSelected;
+
+  const _MobileKaraokeText({
+    required this.lyric,
+    required this.lyrics,
+    required this.index,
+    required this.isSelected,
+  });
+
+  @override
+  State<_MobileKaraokeText> createState() => _MobileKaraokeTextState();
+}
+
+class _MobileKaraokeTextState extends State<_MobileKaraokeText> with SingleTickerProviderStateMixin {
+  late Ticker _ticker;
+  double _progress = 0.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = createTicker(_onTick);
+    _ticker.start();
+  }
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    super.dispose();
+  }
+
+  void _onTick(Duration elapsed) {
+    final currentPos = PlayerService().position;
+    final newProgress = _calculateWordByWordProgress(currentPos);
+
+    if ((newProgress - _progress).abs() > 0.005) {
+      setState(() {
+        _progress = newProgress;
+      });
+    }
+  }
+
+  /// 计算逐字歌词的精确进度（基于时间占比）
+  double _calculateWordByWordProgress(Duration currentPos) {
+    final words = widget.lyric.words!;
+    if (words.isEmpty) return 0.0;
+
+    // 计算总持续时间
+    final Duration totalDuration;
+    if (widget.lyric.lineDuration != null && widget.lyric.lineDuration!.inMilliseconds > 0) {
+      totalDuration = widget.lyric.lineDuration!;
+    } else {
+      final lastWord = words.last;
+      totalDuration = lastWord.endTime - words.first.startTime;
+    }
+    
+    if (totalDuration.inMilliseconds == 0) return 0.0;
+
+    final elapsedFromLineStart = currentPos - widget.lyric.startTime;
+    
+    if (elapsedFromLineStart.inMilliseconds < 0) {
+      return 0.0;
+    }
+    
+    if (elapsedFromLineStart >= totalDuration) {
+      return 1.0;
+    }
+
+    // 基于时间占比计算进度
+    double accumulatedProgress = 0.0;
+
+    for (int i = 0; i < words.length; i++) {
+      final word = words[i];
+      final wordTimeRatio = word.duration.inMilliseconds / totalDuration.inMilliseconds;
+
+      if (currentPos >= word.startTime && currentPos < word.endTime) {
+        final wordElapsed = currentPos - word.startTime;
+        final wordInternalProgress = (wordElapsed.inMilliseconds / word.duration.inMilliseconds).clamp(0.0, 1.0);
+        accumulatedProgress += wordInternalProgress * wordTimeRatio;
+        return accumulatedProgress.clamp(0.0, 1.0);
+      } else if (currentPos >= word.endTime) {
+        accumulatedProgress += wordTimeRatio;
+      } else {
+        return accumulatedProgress.clamp(0.0, 1.0);
+      }
+    }
+
+    return 1.0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final actualFontSize = 22.0 * 1.2;
+    
+    return ShaderMask(
+      shaderCallback: (bounds) {
+        return LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: widget.isSelected
+              ? [
+                  Colors.orange,
+                  Colors.orange.withOpacity(0.5),
+                ]
+              : [
+                  Colors.white,
+                  Colors.white.withOpacity(0.45),
+                ],
+          stops: [_progress, _progress],
+          tileMode: TileMode.clamp,
+        ).createShader(bounds);
+      },
+      blendMode: BlendMode.srcIn,
+      child: Text(
+        widget.lyric.text,
+        textAlign: TextAlign.center,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: actualFontSize,
+          fontWeight: FontWeight.w800,
+          fontFamily: LyricFontService().currentFontFamily ?? 'Microsoft YaHei',
+          height: 1.2,
+          shadows: widget.isSelected
+              ? [
+                  Shadow(
+                    color: Colors.orange.withOpacity(0.6),
+                    blurRadius: 12,
+                    offset: const Offset(0, 0),
+                  ),
+                ]
+              : [
+                  Shadow(
+                    color: Colors.white.withOpacity(0.5),
+                    blurRadius: 12,
+                    offset: const Offset(0, 0),
+                  ),
+                ],
+        ),
+      ),
+    );
   }
 }
 

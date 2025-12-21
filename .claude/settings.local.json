@@ -9,7 +9,8 @@
       "Bash(python:*)",
       "Bash(bun run dev)",
       "Bash(timeout:*)",
-      "Bash(exit:*)"
+      "Bash(exit:*)",
+      "Bash(ping:*)"
     ]
   }
 }

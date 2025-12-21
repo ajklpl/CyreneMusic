@@ -551,8 +551,10 @@ class _OptionalBlur extends StatelessWidget {
   }
 }
 
-/// 卡拉OK文本组件 - 实现逐行填充效果
-/// 性能优化：使用 Ticker 驱动动画，避免监听整个 PlayerService
+/// 卡拉OK文本组件 - 实现逐字填充效果
+/// 支持两种模式：
+/// 1. 有逐字歌词数据时：每个字单独渲染并高亮
+/// 2. 无逐字歌词数据时：回退到整行渐变填充
 class _KaraokeText extends StatefulWidget {
   final String text;
   final LyricLine lyric;
@@ -572,9 +574,15 @@ class _KaraokeText extends StatefulWidget {
 
 class _KaraokeTextState extends State<_KaraokeText> with SingleTickerProviderStateMixin {
   late Ticker _ticker;
-  double _progress = 0.0;
   
-  // 布局测量缓存
+  // ===== 逐字模式状态 =====
+  // 每个字的填充进度 (0.0 - 1.0)
+  List<double> _wordProgresses = [];
+  
+  // ===== 整行模式状态（回退） =====
+  double _lineProgress = 0.0;
+  
+  // 布局测量缓存（用于整行模式）
   double _cachedMaxWidth = 0.0;
   TextStyle? _cachedStyle;
   List<LineMetrics>? _cachedLineMetrics;
@@ -585,13 +593,14 @@ class _KaraokeTextState extends State<_KaraokeText> with SingleTickerProviderSta
   double _line2Height = 0.0;
   double _line1Ratio = 0.5;
   
-  // 计算歌词持续时间（缓存）
+  // 计算歌词持续时间（缓存，用于整行模式）
   late Duration _duration;
 
   @override
   void initState() {
     super.initState();
     _calculateDuration();
+    _initWordProgresses();
     _ticker = createTicker(_onTick);
     _ticker.start();
   }
@@ -600,6 +609,13 @@ class _KaraokeTextState extends State<_KaraokeText> with SingleTickerProviderSta
   void dispose() {
     _ticker.dispose();
     super.dispose();
+  }
+  
+  /// 初始化每个字的进度列表
+  void _initWordProgresses() {
+    if (widget.lyric.hasWordByWord && widget.lyric.words != null) {
+      _wordProgresses = List.filled(widget.lyric.words!.length, 0.0);
+    }
   }
   
   void _calculateDuration() {
@@ -614,19 +630,63 @@ class _KaraokeTextState extends State<_KaraokeText> with SingleTickerProviderSta
   void _onTick(Duration elapsed) {
     final currentPos = PlayerService().position;
 
-    // 使用平均计算方式
-    final elapsedFromStart = currentPos - widget.lyric.startTime;
-    final newProgress = (elapsedFromStart.inMilliseconds / _duration.inMilliseconds).clamp(0.0, 1.0);
+    // 检查是否有逐字歌词
+    if (widget.lyric.hasWordByWord && widget.lyric.words != null) {
+      // ===== 逐字模式：计算每个字的填充进度 =====
+      _updateWordProgresses(currentPos);
+    } else {
+      // ===== 整行模式（回退）：使用平均计算 =====
+      final elapsedFromStart = currentPos - widget.lyric.startTime;
+      final newProgress = (elapsedFromStart.inMilliseconds / _duration.inMilliseconds).clamp(0.0, 1.0);
 
-    // 仅在进度有显著变化时更新（减少不必要的重建）
-    if ((newProgress - _progress).abs() > 0.005) {
+      if ((newProgress - _lineProgress).abs() > 0.005) {
+        setState(() {
+          _lineProgress = newProgress;
+        });
+      }
+    }
+  }
+
+  /// 更新每个字的填充进度
+  void _updateWordProgresses(Duration currentPos) {
+    final words = widget.lyric.words!;
+    if (words.isEmpty) return;
+
+    bool needsUpdate = false;
+    final newProgresses = List<double>.filled(words.length, 0.0);
+
+    for (int i = 0; i < words.length; i++) {
+      final word = words[i];
+      double wordProgress;
+
+      if (currentPos < word.startTime) {
+        // 还没开始唱这个字
+        wordProgress = 0.0;
+      } else if (currentPos >= word.endTime) {
+        // 这个字已经唱完
+        wordProgress = 1.0;
+      } else {
+        // 正在唱这个字，计算内部进度
+        final wordElapsed = currentPos - word.startTime;
+        wordProgress = (wordElapsed.inMilliseconds / word.duration.inMilliseconds).clamp(0.0, 1.0);
+      }
+
+      newProgresses[i] = wordProgress;
+      
+      // 检查是否有变化
+      if (i < _wordProgresses.length && (newProgresses[i] - _wordProgresses[i]).abs() > 0.01) {
+        needsUpdate = true;
+      }
+    }
+
+    if (needsUpdate || _wordProgresses.length != newProgresses.length) {
       setState(() {
-        _progress = newProgress;
+        _wordProgresses = newProgresses;
       });
     }
   }
   
-  /// 更新布局测量缓存
+  /// 更新布局测量缓存（用于整行模式回退）
   void _updateLayoutCache(BoxConstraints constraints, TextStyle style) {
     if (_cachedMaxWidth == constraints.maxWidth && _cachedStyle == style) {
       return; // 缓存有效，无需重新测量
@@ -659,16 +719,44 @@ class _KaraokeTextState extends State<_KaraokeText> with SingleTickerProviderSta
 
   @override
   Widget build(BuildContext context) {
+    final style = DefaultTextStyle.of(context).style;
+    
+    // 有逐字歌词数据时，使用逐字填充模式
+    if (widget.lyric.hasWordByWord && widget.lyric.words != null && _wordProgresses.isNotEmpty) {
+      return _buildWordByWordEffect(style);
+    }
+    
+    // 无逐字歌词数据时，回退到整行模式
     return LayoutBuilder(
       builder: (context, constraints) {
-        final style = DefaultTextStyle.of(context).style;
         _updateLayoutCache(constraints, style);
-        return _buildKaraokeEffect(style);
+        return _buildLineGradientEffect(style);
       },
     );
   }
-
-  Widget _buildKaraokeEffect(TextStyle style) {
+  
+  /// 构建逐字填充效果（核心：每个字单独渲染）
+  Widget _buildWordByWordEffect(TextStyle style) {
+    final words = widget.lyric.words!;
+    
+    return Wrap(
+      alignment: WrapAlignment.start,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: List.generate(words.length, (index) {
+        final word = words[index];
+        final progress = index < _wordProgresses.length ? _wordProgresses[index] : 0.0;
+        
+        return _WordFillWidget(
+          text: word.text,
+          progress: progress,
+          style: style,
+        );
+      }),
+    );
+  }
+  
+  /// 构建整行渐变效果（回退模式）
+  Widget _buildLineGradientEffect(TextStyle style) {
     if (_cachedLineCount == 1) {
       // 单行：使用 ShaderMask 实现高性能渐变
       return RepaintBoundary(
@@ -681,7 +769,7 @@ class _KaraokeTextState extends State<_KaraokeText> with SingleTickerProviderSta
                 Colors.white,
                 Color(0x73FFFFFF), // Colors.white.withOpacity(0.45)
               ],
-              stops: [_progress, _progress],
+              stops: [_lineProgress, _lineProgress],
               tileMode: TileMode.clamp,
             ).createShader(bounds);
           },
@@ -693,12 +781,12 @@ class _KaraokeTextState extends State<_KaraokeText> with SingleTickerProviderSta
     
     // 多行：计算每行进度
     double line1Progress, line2Progress;
-    if (_progress <= _line1Ratio) {
-      line1Progress = _progress / _line1Ratio;
+    if (_lineProgress <= _line1Ratio) {
+      line1Progress = _lineProgress / _line1Ratio;
       line2Progress = 0.0;
     } else {
       line1Progress = 1.0;
-      line2Progress = (_progress - _line1Ratio) / (1.0 - _line1Ratio);
+      line2Progress = (_lineProgress - _line1Ratio) / (1.0 - _line1Ratio);
     }
     
     // 底层暗色文本 (使用 const 颜色)
@@ -746,6 +834,63 @@ class _KaraokeTextState extends State<_KaraokeText> with SingleTickerProviderSta
     );
   }
 }
+
+/// 单个字的填充组件
+/// 使用 Stack + ClipRect 实现从左到右的填充效果
+class _WordFillWidget extends StatelessWidget {
+  final String text;
+  final double progress; // 0.0 - 1.0
+  final TextStyle style;
+
+  const _WordFillWidget({
+    required this.text,
+    required this.progress,
+    required this.style,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // 底层：未填充的暗色文字
+    final dimStyle = style.copyWith(color: const Color(0x73FFFFFF)); // 45% 透明度的白色
+    // 上层：填充的亮色文字
+    final brightStyle = style.copyWith(color: Colors.white);
+    
+    return RepaintBoundary(
+      child: Stack(
+        children: [
+          // 底层暗色文字
+          Text(text, style: dimStyle),
+          
+          // 上层亮色文字（通过 ClipRect 裁剪）
+          ClipRect(
+            clipper: _WordClipper(progress),
+            child: Text(text, style: brightStyle),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 单个字的裁剪器
+class _WordClipper extends CustomClipper<Rect> {
+  final double progress;
+
+  _WordClipper(this.progress);
+
+  @override
+  Rect getClip(Size size) {
+    // 从左到右裁剪
+    return Rect.fromLTRB(0, 0, size.width * progress, size.height);
+  }
+
+  @override
+  bool shouldReclip(_WordClipper oldClipper) {
+    return oldClipper.progress != progress;
+  }
+}
+
+
 
 /// 自定义裁剪器：用于裁剪单行文本的进度
 class _LineClipper extends CustomClipper<Rect> {

@@ -1774,6 +1774,7 @@ class PlayerService extends ChangeNotifier {
             currentSong.lyric,
             translation: currentSong.tlyric.isNotEmpty ? currentSong.tlyric : null,
             yrcLyric: currentSong.yrc.isNotEmpty ? currentSong.yrc : null,
+            yrcTranslation: currentSong.ytlrc.isNotEmpty ? currentSong.ytlrc : null,
           );
           break;
         case 'qq':
@@ -1793,6 +1794,7 @@ class PlayerService extends ChangeNotifier {
             currentSong.lyric,
             translation: currentSong.tlyric.isNotEmpty ? currentSong.tlyric : null,
             yrcLyric: currentSong.yrc.isNotEmpty ? currentSong.yrc : null,
+            yrcTranslation: currentSong.ytlrc.isNotEmpty ? currentSong.ytlrc : null,
           );
       }
 
